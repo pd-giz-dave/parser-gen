@@ -5,62 +5,51 @@ local peg = {}
 -- from relabel.lua
 
 local errinfo = {
-  {"NoPatt", "no pattern found"},
-  {"ExtraChars", "unexpected characters after the pattern"},
+  NoPatt = "no pattern found",
+  ExtraChars = "unexpected characters after the pattern",
 
-  {"ExpPatt1", "expected a pattern after '/' or '//{...}'"},
+  ExpPatt1 = "expected a pattern after '/'",
 
-  {"ExpPatt2", "expected a pattern after '&'"},
-  {"ExpPatt3", "expected a pattern after '!'"},
+  ExpPatt2 = "expected a pattern after '&'",
+  ExpPatt3 = "expected a pattern after '!'",
 
-  {"ExpPatt4", "expected a pattern after '('"},
-  {"ExpPatt5", "expected a pattern after ':'"},
-  {"ExpPatt6", "expected a pattern after '{~'"},
-  {"ExpPatt7", "expected a pattern after '{|'"},
+  ExpPatt4 = "expected a pattern after '('",
+  ExpPatt5 = "expected a pattern after ':'",
+  ExpPatt6 = "expected a pattern after '{~'",
+  ExpPatt7 = "expected a pattern after '{|'",
 
-  {"ExpPatt8", "expected a pattern after '<-'"},
+  ExpPatt8 = "expected a pattern after '<-'",
 
-  {"ExpPattOrClose", "expected a pattern or closing '}' after '{'"},
+  ExpPattOrClose = "expected a pattern or closing '}' after '{'",
 
-  {"ExpNum", "expected a number after '^', '+' or '-' (no space)"},
-  {"ExpNumOrLab", "expected a number or a label after ^"},
-  {"ExpCap", "expected a string, number, '{}' or name after '->'"},
+  ExpNumName = "expected a number, '+', '-' or a name (no space) after '^'",
+  ExpCap = "expected a string, number, '{}' or name after '->'",
 
-  {"ExpName1", "expected the name of a rule after '=>'"},
-  {"ExpName2", "expected the name of a rule after '=' (no space)"},
-  {"ExpName3", "expected the name of a rule after '<' (no space)"},
+  ExpName1 = "expected the name of a rule after '=>'",
+  ExpName2 = "expected the name of a rule after '=' (no space)",
+  ExpName3 = "expected the name of a rule after '<' (no space)",
 
-  {"ExpLab1", "expected at least one label after '{'"},
-  {"ExpLab2", "expected a label after the comma"},
+  ExpLab1 = "expected a label after '{'",
 
-  {"ExpNameOrLab", "expected a name or label after '%' (no space)"},
+  ExpLab = "expected a label after '%' (no space)",
 
-  {"ExpItem", "expected at least one item after '[' or '^'"},
+  ExpItem = "expected at least one item after '[' or '^'",
 
-  {"MisClose1", "missing closing ')'"},
-  {"MisClose2", "missing closing ':}'"},
-  {"MisClose3", "missing closing '~}'"},
-  {"MisClose4", "missing closing '|}'"},
-  {"MisClose5", "missing closing '}'"},  -- for the captures
+  MisClose1 = "missing closing ')'",
+  MisClose2 = "missing closing ':}'",
+  MisClose3 = "missing closing '~}'",
+  MisClose4 = "missing closing '|}'",
+  MisClose5 = "missing closing '}'",  -- for the captures
 
-  {"MisClose6", "missing closing '>'"},
-  {"MisClose7", "missing closing '}'"},  -- for the labels
+  MisClose6 = "missing closing '>'",
+  MisClose7 = "missing closing '}'",  -- for the labels
 
-  {"MisClose8", "missing closing ']'"},
+  MisClose8 = "missing closing ']'",
 
-  {"MisTerm1", "missing terminating single quote"},
-  {"MisTerm2", "missing terminating double quote"},
+  MisTerm1 = "missing terminating single quote",
+  MisTerm2 = "missing terminating double quote",
 }
 
-local errmsgs = {}
-local labels = {}
-
-for i, err in ipairs(errinfo) do
-  errmsgs[i] = err[2]
-  labels[err[1]] = i
-end
-
-re.setlabels(labels)
 
 local function concat(a,b)
 	return a..b
@@ -82,10 +71,6 @@ local function foldtable(action,t)
 				else	
 					re = {action=act, op1=temp, op2=value[2]}
 				end
-			elseif action == "or" and #value == 2 then -- recovery expression
-				local labels = value[1]
-				local op2 = value[2]
-				re = {action=action, op1=temp, op2=op2, condition=labels}
 			else
 				re = {action=action, op1=temp, op2=value}
 			end
@@ -100,11 +85,7 @@ local gram = [=[
 	pattern		<- (exp / %{NoPatt}) (!. / %{ExtraChars})
 	exp		<- S (grammar / alternative)
 
-	labels		<- {| '{' {: (label / %{ExpLab1}) :} (',' {: (label / %{ExpLab2}) :})* ('}' / %{MisClose7}) |}
-
-
-	alternative	<- ( {:''->'or':} {| {: seq :} ('/' (('/' {| {: labels :} S {: (seq / %{ExpPatt1}) :} |}) / (S {: (seq / %{ExpPatt1}) :} ) ) )* |} ) -> foldtable
-
+	alternative	<- ( {:''->'or':} {| {: seq :} ('/' S {: seq :} )* |} ) -> foldtable
 
 	seq		<- ( {:''->'and':} {| {: prefix :}+ |} ) -> foldtable
 
@@ -118,7 +99,7 @@ local gram = [=[
 
 	suffixaction	<- {[+*?]}
 			/ {'^'} {| {:num: [+-]? NUM:} |}
-			/ '^'->'^LABEL' (label / %{ExpNumOrLab}) 
+			/ '^'->'^LABEL' (label / %{ExpLab}) 
 			/ {'->'} S ((string / {| {:action:'{}'->'poscap':} |} / funcname / {|{:num: NUM :} |}) / %{ExpCap}) 
 			/ {'=>'} S (funcname / %{ExpName1}) 
 
@@ -174,7 +155,7 @@ local gram = [=[
 local defs = {foldtable=foldtable, concat=concat}
 peg.gram = gram
 peg.defs = defs
-peg.labels = labels
+peg.errinfo = errinfo
 local p = re.compile ( gram, defs)
 
 
@@ -204,7 +185,7 @@ Example output: {
 The rules are further processed and turned into lpeg compatible format in parser-gen.lua
 
 Action names:
-or (has parameter condition for recovery expresions)
+or 
 and
 &
 !
@@ -212,7 +193,7 @@ and
 *
 ?
 ^num (num is a number with an optional plus or minus sign)
-^label (label is an error label set with setlabels)
+^label (label is an error label)
 ->
 =>
 tcap
@@ -233,32 +214,50 @@ func - function definition
 s - literal string
 num - literal number
 ]]--
+
+local function lineno (s, i)
+  if i == 1 then return 1, 1 end
+  local adjustment = 0
+  -- report the current line if at end of line, not the next
+  if s:sub(i,i) == '\n' then
+    i = i-1
+    adjustment = 1
+  end
+  local rest, num = s:sub(1,i):gsub("[^\n]*\n", "")
+  local r = #rest
+  return 1 + num, (r ~= 0 and r or 1) + adjustment
+end
+
+local function calcline (s, i)
+  if i == 1 then return 1, 1 end
+  local rest, line = s:sub(1,i):gsub("[^\n]*\n", "")
+  local col = #rest
+  return 1 + line, col ~= 0 and col or 1
+end
+
+local tinsert , tconcat= table.insert, table.concat
+
+
 local function splitlines(str)
   local t = {}
-  local function helper(line) table.insert(t, line) return "" end
+  local function helper(line) tinsert(t, line) return "" end
   helper((str:gsub("(.-)\r?\n", helper)))
   return t
 end
+
 function peg.pegToAST(input, defs)
-	local r, e, sfail = p:match(input, defs)
+	local r, label, poserr = p:match(input, 1, defs)
 	if not r then
-		local lab
-		if e == 0 then
-			lab = "Syntax error"
-		else
-			lab = errmsgs[e]
-		end
 		local lines = splitlines(input)
-		local line, col = re.calcline(input, #input - #sfail + 1)
+    local line, col = lineno(input, poserr)
 		local err = {}
-		table.insert(err, "L" .. line .. ":C" .. col .. ": " .. lab)
-		table.insert(err, lines[line])
-		table.insert(err, string.rep(" ", col-1) .. "^")
-		error("syntax error(s) in pattern\n" .. table.concat(err, "\n"), 3)
+    tinsert(err, "L" .. line .. ":C" .. col .. ": " .. errinfo[label])
+    tinsert(err, lines[line])
+    tinsert(err, string.rep(" ", col-1) .. "^")
+    error("syntax error(s) in pattern\n" .. tconcat(err, "\n"), 3)
 	end
 	return r
 end
-
 
 function peg.print_r ( t )  -- for debugging
     local print_r_cache={}

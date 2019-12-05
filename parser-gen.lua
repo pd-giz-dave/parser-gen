@@ -48,12 +48,7 @@ end
 updatelocale()
 
 local definitions = {}
-local tlabels = {}
-local totallabels = 0
-local tlabelnames = {} -- reverse table
-local tdescs = {}
-local trecs = {} -- recovery for each error
-
+local tlabels = {} 
 
 local function defaultsync(patt)
 	return (m.P(1)^-1) * (-patt * m.P(1))^0
@@ -151,19 +146,8 @@ local function addspaces (caps)
 	return caps
 end
 
-local function applyaction(action, op1, op2, labels,tokenrule)
+local function applyaction(action, op1, op2, labels, tokenrule)
 	if action == "or" then
-		if labels then -- labels = {{s="errName"},{s="errName2"}}
-			for i, v in ipairs(labels) do
-				local labname = v["s"]
-				local lab = tlabels[labname]
-				if not lab then
-					error("Label '"..labname.."' undefined")
-				end
-				labels[i] = lab
-			end
-			return m.Rec(op1,op2,unpack(labels))
-		end
 		return op1 + op2
 	elseif action == "and" then
 
@@ -181,11 +165,7 @@ local function applyaction(action, op1, op2, labels,tokenrule)
 	elseif action == "^" then
 		return op1^op2
 	elseif action == "^LABEL" then
-		local lab = tlabels[op2]
-		if not lab then
-			error("Label '"..op2.."' unspecified using setlabels()")
-		end
-		return op1 + m.T(lab)
+		return op1 + m.T(op2)
 	elseif action == "->" then
 		return op1 / op2
 	-- in captures we add SPACES^0
@@ -209,11 +189,7 @@ local function applyaction(action, op1, op2, labels,tokenrule)
 		end
 		return m.P(1)
 	elseif action == "label" then
-		local lab = tlabels[op1]
-		if not lab then
-			error("Label '"..op1.."' unspecified using setlabels()")
-		end
-		return m.T(lab) -- lpeglabel
+		return m.T(op1) -- lpeglabel
 	elseif action == "%" then
 		if definitions[op1] then
 			return definitions[op1]
@@ -286,11 +262,11 @@ local function traverse (ast, tokenrule)
 		
 	elseif isaction(ast) then
 	
-		local act, op1, op2, labs, ret1, ret2
+		local act, op1, op2, ret1, ret2
 		act = ast["action"]
 		op1 = ast["op1"]
 		op2 = ast["op2"]
-		labs = ast["condition"] -- recovery operations
+		
 		
 		-- post-order traversal
 		if iscapture(act) then
@@ -301,7 +277,7 @@ local function traverse (ast, tokenrule)
 		ret2 = traverse(op2, tokenrule)
 		
 		
-		return applyaction(act, ret1, ret2, labs, tokenrule)
+		return applyaction(act, ret1, ret2, tokenrule)
 		
 	elseif isgrammar(ast) then
 		--
@@ -357,16 +333,16 @@ local function recorderror(position,label)
 	if label == 0 then
 		desc = "Syntax error"
 	else
-		desc = tdescs[label]
+		desc = tlabels[label]
 	end
 	if errorfunc then
-		local temp = string.sub(subject,position)
+		local temp = string.sub(subject, position)
 		local strend = string.find(temp, "\n") 
 		local sfail =  string.sub(temp, 1, strend)
-		errorfunc(desc,line,col,sfail,trecs[label])
+		errorfunc(desc, line, col, sfail, label)
 	end
 
-	local err = { line = line, col = col, label=tlabelnames[label], msg = desc }
+	local err = { line = line, col = col, label=label, msg = desc }
 	table.insert(errors, err)
 
 end
@@ -374,22 +350,26 @@ local function record(label)
 	return (m.Cp() * m.Cc(label)) / recorderror
 end
 
-local function buildrecovery(grammar)
+local function buildrecoverylabel(builder, ast)
 
 	local synctoken = pattspaces(sync(SYNC))
-	local grec = grammar
-	
-	for k,v in pairs(tlabels) do
+ 
+	for lbl,desc in pairs(tlabels) do
+		local found = false
+		for i, v in ipairs(ast) do
+			local name = v["rulename"]
 
-		if trecs[v] then -- custom sync token
-			grec = m.Rec(grec,record(v) * pattspaces(trecs[v]), v)
-		else -- use global sync token
-			grec = m.Rec(grec,record(v) * synctoken, v)
+			if name == lbl then 
+				found = true
+			end
+		end
+
+		if not found then 
+			builder[lbl] =  record(lbl) * synctoken 
 		end
 	end
-	return grec
-	
 end
+
 local usenode = false
 
 local function usenodes(val)
@@ -448,7 +428,7 @@ local function build(ast, defs)
 	end
 	if isgrammar(ast) then
 		return traverse(ast)
-	else
+	else -- input is not a grammar - skip spaces and sync by default
 		SKIP = (Predef.space + Predef.nl)
 		skipspaces = true
 		SYNC = nil
@@ -458,7 +438,7 @@ local function build(ast, defs)
 		if buildast then
 			res = m.Ct(res)
 		end
-		return res -- input is not a grammar - skip spaces and sync by default
+		return res
 	end
 end
 
@@ -474,34 +454,14 @@ end
 
 
 -- t = {errName="Error description",...}
-local function setlabels (t, errorgen)
-	local index
-	if errorgen then
-		index = totallabels + 1
-	else
-		-- reset error tables
-		index = 1
-		tlabels = {}
-		
-		tdescs = {}
-		trecs = {}
-	end
+local function setlabels (t, append)
+	if not append then tlabels = {} end
 	for key,value in pairs(t) do
-		if index >= 255 then
-			error("Error label limit reached(255)")
-		end
 		if type(value) == "table" then -- we have a recovery expression
-			tdescs[index] = value[1]
-
-			trecs[index] = traverse(peg.pegToAST(value[2]), true)-- PEG to LPEG
-		else
-			tdescs[index] = value
+			error( "unsuported recovery expression in labels, use a rule in the form  'label <- recovery' ")
 		end
-		tlabels[key] = index
-		tlabelnames[index] = key -- reverse table
-		index = index + 1
-	end
-	totallabels = index-1
+		tlabels[key] = value  
+	end 
 end
 
 
@@ -551,7 +511,7 @@ local function parse (input, grammar, errorfunction)
 	-- end
 	local r, e, sfail = m.match(grammar,input)
 	if not r then
-		recorderror(#input - #sfail, e)
+		recorderror(#input - sfail, e)
 	end
 	if #errors == 0 then errors=nil end
 	return r, errors

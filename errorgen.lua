@@ -313,19 +313,14 @@ local function printexpect(op)
 		end
 	end
 end
-local GENERATED_ERRORS = 0
 local TERRS = {}
 local function generateerror(op, after)
 
-	local desc = "Expected "..printexpect(op)
+	local expected =printexpect(op)
+	local desc = "Expected "..expected
 	
-	local err = GENERATED_ERRORS+1
-	if err >= 255 then
-		error("Error label limit reached(255)")
-	end
-	local name = "errorgen"..err
+	local name = "errorgen"..expected
 	TERRS[name] = desc
-	GENERATED_ERRORS = GENERATED_ERRORS+1
 	return name
 end
 
@@ -381,7 +376,6 @@ local function adderrors_aux(ast,tokenrule)
 	return ast
 end
 local function adderrors(t, followset)
-	GENERATED_ERRORS = 0
 	TERRS = {}
 	if isgrammar(t) then 
 		for pos,val in pairs(t) do
