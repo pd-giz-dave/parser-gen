@@ -18,7 +18,7 @@ parser-gen is a [GSoC 2017](https://developers.google.com/open-source/gsoc/) pro
 # Requirements
 ```
 lua >= 5.1
-lpeglabel >= 1.2.0
+lpeglabel >= 1.6.0
 ```
 # Syntax
 
@@ -46,7 +46,7 @@ grammar = pg.compile(input,definitions [, errorgen, noast])
 
 ### setlabels
 
-If custom error labels are used, the function *setlabels* allows setting their description (and custom recovery pattern):
+If custom error labels are used, the function *setlabels* allows setting their description:
 ```lua
 pg.setlabels(t)
 ```
@@ -55,11 +55,11 @@ Example table of a simple error and one with a custom recovery expression:
 -- grammar rule: " ifexp <- 'if' exp 'then'^missingThen stmt 'end'^missingEnd "
 local t = {
 	missingEnd = "Missing 'end' in if expression",
-	missingThen = {"Missing 'then' in if expression", " (!stmt .)* "} -- a custom recovery pattern
+	missingThen = "Missing 'then' in if expression",
 }
 pg.setlabels(t)
 ```
-If the recovery pattern is not set, then the one specified by the rule SYNC will be used. It is by default set to:
+If no rule with the label name exist, then the one specified by the rule SYNC will be used. It is by default set to:
 ```lua
 SKIP <- %s / %nl -- a space ' ' or newline '\n' character
 SYNC <- .? (!SKIP .)*
@@ -127,7 +127,7 @@ Since a parser generated with parser-gen automatically consumes space characters
 
 ### Basic syntax
 
-The syntax of parser-gen grammars is somewhat similar to regex syntax. The next table summarizes the tools syntax. A p represents an arbitrary pattern; num represents a number (`[0-9]+`); name represents an identifier (`[a-zA-Z][a-zA-Z0-9_]*`).`defs` is the definitions table provided when compiling the grammar. Note that error names must be set using `setlabels()` before compiling the grammar. Constructions are listed in order of decreasing precedence.
+The syntax of parser-gen grammars is somewhat similar to regex syntax. The next table summarizes the tools syntax. A p represents an arbitrary pattern; num represents a number (`[0-9]+`); name represents an identifier (`[a-zA-Z][a-zA-Z0-9_]*`).`defs` is the definitions table provided when compiling the grammar. Note that you should provide error descriptions by using `setlabels()` before compiling the grammar. Constructions are listed in order of decreasing precedence.
 
 <table border="1">
 <tbody><tr><td><b>Syntax</b></td><td><b>Description</b></td></tr>
@@ -168,8 +168,6 @@ equivalent to <code>lpeg.Cmt(p, defs[name])</code></td></tr>
 <tr><td><code>&amp; p</code></td> <td>and predicate</td></tr>
 <tr><td><code>! p</code></td> <td>not predicate</td></tr>
 <tr><td><code>p1 p2</code></td> <td>concatenation</td></tr>
-<tr><td><code>p1 //{name [, name, ...]} p2</code></td> <td>specifies recovery pattern p2 for p1
-when one of the labels is thrown</td></tr>	
 <tr><td><code>p1 / p2</code></td> <td>ordered choice</td></tr>
 <tr><td>(<code>name &lt;- p</code>)<sup>+</sup></td> <td>grammar</td></tr>
 </tbody></table>
@@ -184,7 +182,7 @@ For more examples check out the [re](http://www.inf.puc-rio.br/~roberto/lpeg/re.
 
 ### Error labels
 
-Error labels are provided by the relabel function %{errorname} (errorname must follow `[A-Za-z][A-Za-z0-9_]*` format). Usually we use error labels in a syntax like `'a' ('b' / %{errB}) 'c'`, which throws an error label if `'b'` is not matched. This syntax is quite complicated so an additional syntax is allowed `'a' 'b'^errB 'c'`, which allows cleaner description of grammars. Note: all errors must be defined in a table using parser-gen.setlabels() before compiling and parsing the grammar.
+Error labels are provided by the relabel function %{errorname} (errorname must follow `[A-Za-z][A-Za-z0-9_]*` format). Usually we use error labels in a syntax like `'a' ('b' / %{errB}) 'c'`, which throws an error label if `'b'` is not matched. This syntax is quite complicated so an additional syntax is allowed `'a' 'b'^errB 'c'`, which allows cleaner description of grammars.
 
 ### Tokens
 
@@ -206,7 +204,7 @@ res, _ = pg.parse("AA A", grammar) -- outputs {rule="word", "A", "A", "A"}
 
 ### Fragments
 
-If a token definition is followed by a `fragment` keyword, then the parser does not build an AST entry for that token. Essentially, these rules are used to simplify grammars without building unnecessarily complicated ASTS. Example of `fragment` usage:
+If a token definition is preceded by a `fragment` keyword, then the parser does not build an AST entry for that token. Essentially, these rules are used to simplify grammars without building unnecessarily complicated ASTS. Example of `fragment` usage:
 ```lua
 grammar = pg.compile [[
 	WORD <- LETTER+
