@@ -330,6 +330,7 @@ local function recorderror(position,label)
 	-- call error function here
 	local line, col = peg.calcline(subject, position)
 	local desc
+  
 	if label == 0 then
 		desc = "Syntax error"
 	else
@@ -342,7 +343,7 @@ local function recorderror(position,label)
 		errorfunc(desc, line, col, sfail, label)
 	end
 
-	local err = { line = line, col = col, label=label, msg = desc }
+	local err = { line = line, col = col, label=label, msg = desc}
 	table.insert(errors, err)
 
 end
@@ -414,7 +415,7 @@ function bg.buildgrammar (ast)
 		builder[initialrule] = SKIP^0 * builder[initialrule] -- skip spaces at the beginning of the input
 	end
 	if recovery then
-		builder[initialrule] = buildrecovery(builder[initialrule]) -- build recovery on top of initial rule
+		 buildrecoverylabel(builder, ast) -- build recovery on top of initial rule
 	end
 	return builder
 end
@@ -431,7 +432,6 @@ local function build(ast, defs)
 	else -- input is not a grammar - skip spaces and sync by default
 		SKIP = (Predef.space + Predef.nl)
 		skipspaces = true
-		SYNC = nil
 		recovery = true
 		SYNC = defaultsync(SKIP)
 		local res = SKIP ^0 * traverse(ast)

@@ -250,9 +250,9 @@ assert(equals(e,res))
 -- a //{errName,errName2} b
 
 --peg.setlabels({errName=1, errName2=2})
-e = f('a //{errName,errName2} b')
+e = f('a ^errName')
 
-res = {action="or", condition={{s="errName"},{s="errName2"}}, op1={nt="a"}, op2={nt="b"}}
+res = {action="^LABEL", op2={s="errName"}, op1={nt="a"}}
 
 
 assert(equals(e,res))

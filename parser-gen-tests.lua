@@ -12,7 +12,7 @@ local pr = peg.print_r
 
 -- terminals
 -- space allowed
-rule = pg.compile [[
+local rule = pg.compile [[
 rule <-  'a'
 ]]
 str = "a   a aa "
@@ -104,8 +104,8 @@ rule = pg.compile [[ rule <- 'a' / %{errName}
 					]]
 local errorcalled = false
 local function err(desc, line, col, sfail, recexp)
-	errorcalled = true
-	assert(desc == "Error number 1")
+  errorcalled = true
+  assert(desc == "Error number 1")
 end
 res = pg.parse("b",rule,err)
 assert(errorcalled)
@@ -116,7 +116,7 @@ local labs = {errName = "Error number 1",errName2 = "Error number 2"}
 pg.setlabels(labs)
 
 rule = pg.compile [[ 
-rule <- As //{errName,errName2} Bs
+rule <- As /%{errName} Bs
 As <- 'a'* / %{errName2}
 Bs <- 'b'*
 ]]
@@ -140,21 +140,43 @@ assert(errs[1]["msg"] == "Expected C")
 -- TESTING RECOVERY GENERATION
 
 
+
+p = 	[[seq		<- ( {:''->'and':} {| {: prefix :}+ |} ) -> foldtable]]
+
 -- SELF-DESCRIPTION
-pg.setlabels(peg.labels)
-gram = pg.compile(peg.gram, peg.defs,_,true)
-res1, errs = pg.parse(peg.gram,gram)
+pg.setlabels(peg.errinfo)
+local gram = pg.compile(peg.gram, peg.defs,_,true)
+
+local res1, errs = pg.parse(p, gram, 
+  function  (desc, line, col, sfail, label)
+  print ("L"..line.."C"..col..": "..desc)
+  print ("                          "..sfail)
+  end)
+pp(res1)
+
+
+res1, errs = pg.parse(peg.gram, gram, 
+  function  (desc, line, col, sfail, label)
+  print ("L"..line.."C"..col..": "..desc)
+  print ("                          "..sfail)
+  end)
 assert(res1) -- parse succesful
 
---[[ this test is invalid since tool added ^LABEL syntax
-r = re.compile(peg.gram,peg.defs)
-res2 = r:match(peg.gram)
+if errs then
+  for i, e in pairs(errs) do
+    print ("L"..e.line.."C"..e.col..": "..e.msg)
+  end
+  assert(errs == nil) -- no errors
+end
+--- this test is invalid since tool added ^LABEL syntax
+  r = re.compile(peg.gram,peg.defs)
+  res2 = r:match(peg.gram)
 
---peg.print_r(res2)
+  peg.print_r(res2)
 
-assert(equals(res1, res2))
-]]--
+--assert(equals(res1, res2))
+--]]--
 
 
 
-print("all tests succesful")
+  print("all tests succesful")
