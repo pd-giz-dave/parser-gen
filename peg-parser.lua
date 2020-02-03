@@ -1,4 +1,15 @@
-local re = require "relabel"
+local function req(src, mod)
+  local m = pcall(require, src) and require (src )
+  or pcall(require, mod.."."..src) and require (mod.."."..src)  -- luapower sub module path
+  or nil
+
+  assert(m, 'parser-gen depend on "'..src..'" from "'..mod..'". Please check your path')
+  return m
+end
+
+local re = req("relabel", "lpeglabel")
+
+assert(re, "parser-gen depend on 'lpeglabel' >= 1.6")
 
 local peg = {}
 
@@ -52,31 +63,31 @@ local errinfo = {
 
 
 local function concat(a,b)
-	return a..b
+  return a..b
 end
 local function foldtable(action,t)
-	local re
-	local first = true
-	for key,value in pairs(t) do
-		if first then
-			re = value
-			first = false
-		else
+  local re
+  local first = true
+  for key,value in pairs(t) do
+    if first then
+      re = value
+      first = false
+    else
 
-			local temp = re
-			if action == "suf" then -- suffix actions
-				local act = value[1]
-				if act == "*" or act == "?" or act == "+" then
-					re = {action=act, op1=temp}
-				else	
-					re = {action=act, op1=temp, op2=value[2]}
-				end
-			else
-				re = {action=action, op1=temp, op2=value}
-			end
-		end
-	end
-	return re
+      local temp = re
+      if action == "suf" then -- suffix actions
+        local act = value[1]
+        if act == "*" or act == "?" or act == "+" then
+          re = {action=act, op1=temp}
+        else	
+          re = {action=act, op1=temp, op2=value[2]}
+        end
+      else
+        re = {action=action, op1=temp, op2=value}
+      end
+    end
+  end
+  return re
 end
 
 
@@ -108,7 +119,7 @@ local gram = [=[
 
 	primary		<- '(' (exp / %{ExpPatt4}) (')' / %{MisClose1}) 
 			/ term
-			/ class
+			/ {| {:action: ''->'class':} {:op1:class:}  |}
 			/ defined
 			/ {| {:action: '%'->'label':} ('{' / %{ExpNameOrLab})  S ({:op1: label:} / %{ExpLab1})  S ('}' / %{MisClose7})  |}
 			/ {| {:action: '{:'->'gcap':} {:op2: defname:} ':' !'}' ({:op1:exp:} / %{ExpPatt5}) (':}' / %{MisClose2}) |}
@@ -125,7 +136,7 @@ local gram = [=[
 	grammar		<- {| definition+ |}
 	definition	<- {| (frag / nodee)? (token / nontoken) S ARROW ({:rule: exp :} / %{ExpPatt8}) |}
 
-	label		<- {| {:s: ERRORNAME :} |}
+	label		<- {| {:name: ERRORNAME :} |}
 	
 	frag		<- {:fragment: 'fragment'->'1' :} ![0-9_a-z] S !ARROW
 	nodee		<- {:node: 'node'->'1' :} ![0-9_a-z] S !ARROW
@@ -133,9 +144,9 @@ local gram = [=[
 	nontoken	<- {:rulename: NAMESTRING :} 
 
 	class		<- '[' ( ('^' {| {:action:''->'invert':} {:op1: classset :} |} ) / classset ) (']' / %{MisClose8})
-	classset	<- ( {:''->'or':} {| {: (item / %{ExpItem}) :} (!']' {: (item / %{ExpItem}) :})* |} ) -> foldtable
-	item		<- defined / range / {| {:t: . :} |}
-	range		<- {| {:action:''->'range':} {:op1: {| {:s: ({: . :} ('-') {: [^]] :} ) -> concat :} |} :} |}
+	classset	<- ( {:''->'classset':} {| {: (item / %{ExpItem}) :} (!']' {: (item / %{ExpItem}) :})* |} ) -> foldtable
+	item		<- defined / range / {| {:tchar: . :} |}
+	range		<- {| {:action:''->'range':} {:op1: {| {:name: ({: . :} ('-') {: [^]] :} ) -> concat :} |} :} |}
 
 	S		<- (%s / '--' [^%nl]*)*   -- spaces and comments
 	name		<- {| {:nt: TOKENNAME :} {:token:''->'1':} / {:nt: NAMESTRING :} |}
@@ -144,7 +155,7 @@ local gram = [=[
 	ERRORNAME	<- NAMESTRING
 	NAMESTRING	<- [A-Za-z][A-Za-z0-9_]*
 	TOKENNAME	<- [A-Z_]+ ![0-9a-z]
-	defname		<- {| {:s: NAMESTRING :} |}
+	defname		<- {| {:name: NAMESTRING :} |}
 	ARROW		<- '<-'
 	NUM		<- [0-9]+
 	term		<- {| '"' {:t: [^"]* :} ('"' / %{MisTerm2}) / "'" {:t: [^']* :} ("'" / %{MisTerm1})  |}
@@ -205,7 +216,9 @@ scap
 anychar
 label
 %
+invert
 range
+classset 
 
 Final token actions:
 t - terminal
@@ -246,88 +259,95 @@ local function splitlines(str)
 end
 
 function peg.pegToAST(input, defs)
-	local r, label, poserr = p:match(input, 1, defs)
-	if not r then
-		local lines = splitlines(input)
+  local r, label, poserr = p:match(input, 1, defs)
+  if not r then
+    local lines = splitlines(input)
     local line, col = lineno(input, poserr)
-		local err = {}
+    local err = {}
     tinsert(err, "L" .. line .. ":C" .. col .. ": " .. errinfo[label])
     tinsert(err, lines[line])
     tinsert(err, string.rep(" ", col-1) .. "^")
     error("syntax error(s) in pattern\n" .. tconcat(err, "\n"), 3)
-	end
-	return r
+  end
+  return r
 end
 
 function peg.print_r ( t )  -- for debugging
-    local print_r_cache={}
-    local function sub_print_r(t,indent)
-        if (print_r_cache[tostring(t)]) then
-            print(indent.."*"..tostring(t))
-        else
-            print_r_cache[tostring(t)]=true
-            if (type(t)=="table") then
-                for pos,val in pairs(t) do
-                    if (type(val)=="table") then
-                        print(indent.."["..pos.."] => {")
-                        sub_print_r(val,indent..string.rep(" ",string.len(pos)+8))
-                        print(indent..string.rep(" ",string.len(pos)+6).."}")
-                    else
-                        print(indent.."["..pos.."] => '"..tostring(val).."'")
-                    end
-                end
-            else
-                print(indent..tostring(t))
-            end
+  local print_r_cache={}
+  local function sub_print_r(t,indent)
+    if (print_r_cache[tostring(t)]) then
+      print(indent.."*"..tostring(t))
+    else
+      print_r_cache[tostring(t)]=true
+      if (type(t)=="table") then
+        for pos,val in pairs(t) do
+          if (type(val)=="table") then
+            print(indent.."["..pos.."] => {")
+            sub_print_r(val,indent..string.rep(" ",string.len(pos)+8))
+            print(indent..string.rep(" ",string.len(pos)+6).."}")
+          else
+            print(indent.."["..pos.."] => '"..tostring(val).."'")
+          end
         end
+      else
+        print(indent..tostring(t))
+      end
     end
-    sub_print_r(t,"")
+  end
+  sub_print_r(t,"")
 end
 function peg.print_t ( t )  -- for debugging
-    local print_r_cache={}
-    local function sub_print_r (t,indent)
-        if (print_r_cache[tostring(t)]) then
-            print(indent.."*"..tostring(t))
-        else
-            print_r_cache[tostring(t)]=true
-            if (type(t)=="table") then
-				local function subprint (pos,val,indent)
-					if (type(val)=="table") then
-                        print(indent.."{")
-                        sub_print_r(val,indent..string.rep(" ",string.len(pos)+8))
-                        print(indent..string.rep(" ",string.len(pos)-1).."},")
-                    else
-						if type(val) ~= "number" then
-							val = "'"..tostring(val).."'"
-						end
-							
-						if tonumber(pos) then
-							print(indent..val..",")
-						else
-							print(indent..pos.."="..val..",")
-						end
-                    end
-				end
-				if t["rule"] then 
-					subprint("rule",t["rule"],indent)
-				end
-				if t["pos"] then
-					subprint("pos",t["pos"],indent)
-				end
-                for pos,val in pairs(t) do
-					if pos ~= "rule" and pos ~= "pos" then
-						subprint(pos,val,indent)
-					end
-                end
-            else
-                print(indent..tostring(t))
+  local print_r_cache={}
+  local function sub_print_r (t,indent)
+    if (print_r_cache[tostring(t)]) then
+      print(indent.."*"..tostring(t))
+    else
+      print_r_cache[tostring(t)]=true
+      if (type(t)=="table") then
+        local function subprint (pos,val,indent)
+          if (type(val)=="table") then
+            print(indent.."{")
+            sub_print_r(val,indent..string.rep(" ",string.len(pos)+8))
+            print(indent..string.rep(" ",string.len(pos)-1).."},")
+          else
+            if type(val) ~= "number" then
+              val = "'"..tostring(val).."'"
             end
+
+            if tonumber(pos) then
+              print(indent..val..",")
+            else
+              print(indent..pos.."="..val..",")
+            end
+          end
         end
+        if t["rule"] then 
+          subprint("rule",t["rule"],indent)
+        end
+        if t["pos"] then
+          subprint("pos",t["pos"],indent)
+        end
+        for pos,val in pairs(t) do
+          if pos ~= "rule" and pos ~= "pos" then
+            subprint(pos,val,indent)
+          end
+        end
+      else
+        print(indent..tostring(t))
+      end
     end
-    sub_print_r(t,"")
+  end
+  sub_print_r(t,"")
 end
 
 function peg.calcline(subject, pos)
-	return re.calcline(subject,pos)
+  return re.calcline(subject, pos)
 end
+
+peg.foldtable = foldtable
+peg.concat = concat
+peg.calcline = calcline
+peg.lineno = lineno
+peg.splitlines = splitlines
+
 return peg

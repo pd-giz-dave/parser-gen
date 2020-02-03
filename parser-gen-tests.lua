@@ -1,22 +1,33 @@
+
+local function req(src, mod)
+  mod = mod or ""
+  local m = pcall(require, src) and require(src)
+  or pcall(require, mod.."."..src) and  require( mod.."."..src)  -- luapower sub module path
+  or nil
+
+  assert(m, 'parser-gen depend on "'..src..'" from "'..mod..'". Please check your path')
+  return m
+end
+
 local pg = require "parser-gen"
 local peg = require "peg-parser"
-local re = require "relabel"
-
-local eq = require "equals"
-
+local re = req("relabel", "lpeglabel")
+ 
+local eq = req("equals", "parser-gen")
 local equals = eq.equals
+ 
 
 
 local pr = peg.print_r
 
-
+local rule, res, res1, err1, res2
 -- terminals
 -- space allowed
 local rule = pg.compile [[
 rule <-  'a'
 ]]
-str = "a   a aa "
-res = pg.parse(str,rule)
+local str = "a   a aa "
+local res = pg.parse(str,rule)
 assert(res)
 
 -- space not allowed
@@ -77,106 +88,114 @@ str = "  a     b  "
 res = pg.parse(str,rule)
 assert(res)
 
+-- testing ranges
+rule = [[ r <- {[a1b]* } ]]
+str = "a1b"
+res, err1 = pg.parse(str, rule, {nocaptures=true})
+local res2 = re.compile(rule):match(str)
+assert(equals(res, res2 )) 
+
+res = pg.parse(str, rule,{nocaptures=false})
+
+
+-- testing space in class
+rule = [[ r <-{[a1b]*} ]]
+str = "a 1b"
+res,err1 = pg.parse(str, rule,  {skipspaces = true, nocaptures=true} )
+assert(equals(res,"a")) 
+local res2 = re.compile(rule):match(str)
+
+rule = [[ r <- [a1]*  ]]
+str = "a a"
+local res = pg.parse(str, rule )
+assert(res[1]== "a") 
+
+
+-- testing quote in class
+rule = [[ r <-{ [b']* }  ]]
+str = "b'b"
+res = pg.parse(str, rule  )
+assert( res[1] =="b'b") 
+
 
 
 -- TESTING CAPTURES
 
-r = pg.compile([[ rule <- {| {:'a' 'b':}* |} 
-
-				]],_,_,true)
+local r = pg.compile([[ 
+  rule <- {| {:'a' 'b':}* |} 
+				]], {nocaptures=true})
 res = pg.parse("ababab", r)
 
 assert(equals(res,{"ab","ab","ab"}))
 -- space in capture
 
 rule = pg.compile([[ rule <- {| {: 'a' :}* |} 
-]],_,_,true)
+]], {nocaptures=true})
 str = " a a a "
 res = pg.parse(str,rule)
 
-assert(equals(res,{"a","a","a"})) -- fails
+assert(equals(res,{"a","a","a"}))  
 
 -- TESTING ERROR LABELS
 local labs = {errName = "Error number 1",errName2 = "Error number 2"}
-pg.setlabels(labs)
-rule = pg.compile [[ rule <- 'a' / %{errName}
+
+rule = pg.compile ([[ rule <- 'a' / %{errName}
 					SYNC <- '' 
-					]]
+					]],  {labels=labs} )
 local errorcalled = false
 local function err(desc, line, col, sfail, recexp)
   errorcalled = true
   assert(desc == "Error number 1")
 end
-res = pg.parse("b",rule,err)
+res,err1 = pg.parse("b",rule,{errorfunction=err})
 assert(errorcalled)
 
 -- TESTING ERROR RECOVERY
 
 local labs = {errName = "Error number 1",errName2 = "Error number 2"}
-pg.setlabels(labs)
 
-rule = pg.compile [[ 
-rule <- As /%{errName} Bs
+
+rule = pg.compile( [[ 
+rule <- As / %{errName}
 As <- 'a'* / %{errName2}
-Bs <- 'b'*
-]]
+errName <- 'b'*
+]],   {labels=labs} )
+res1 = pg.parse(" a a a",rule,  {labels=labs})
+res2 = pg.parse("b b b ",rule,  {labels=labs})
+assert(res1 and res2)
+
+local labs = {errName = "Error number 1", errName2 = "Error number 2"} 
+
+rule = pg.compile ([[ 
+rule <- As ^errName
+As <- 'a'* / %{errName2}
+errName2 <- 'b'*
+]],   {labels=labs})
 res1 = pg.parse(" a a a",rule)
 res2 = pg.parse("b b b ",rule)
 assert(res1 and res2)
 
 -- TESTING ERROR GENERATION
 
-pg.setlabels({})
 rule = pg.compile([[
 rule <- A B C 
 A <- 'a'
 B <- 'b'
 C <- 'c'
 
-]],_,true)
-res1, errs = pg.parse("ab",rule)
-assert(errs[1]["msg"] == "Expected C")
+]], {generrors=true})
+res1, err1 = pg.parse("ab",rule)
+assert(err1[1]["msg"] == "Expected C")
 
 -- TESTING RECOVERY GENERATION
 
 
-
-p = 	[[seq		<- ( {:''->'and':} {| {: prefix :}+ |} ) -> foldtable]]
-
 -- SELF-DESCRIPTION
-pg.setlabels(peg.errinfo)
-local gram = pg.compile(peg.gram, peg.defs,_,true)
 
-local res1, errs = pg.parse(p, gram, 
-  function  (desc, line, col, sfail, label)
-  print ("L"..line.."C"..col..": "..desc)
-  print ("                          "..sfail)
-  end)
-pp(res1)
-
-
-res1, errs = pg.parse(peg.gram, gram, 
-  function  (desc, line, col, sfail, label)
-  print ("L"..line.."C"..col..": "..desc)
-  print ("                          "..sfail)
-  end)
+gram = pg.compile(peg.gram, {nocaptures=true, labels=peg.errinfo, definitions = peg.defs})
+local res1, errs = pg.parse(peg.gram,gram)
 assert(res1) -- parse succesful
 
-if errs then
-  for i, e in pairs(errs) do
-    print ("L"..e.line.."C"..e.col..": "..e.msg)
-  end
-  assert(errs == nil) -- no errors
-end
---- this test is invalid since tool added ^LABEL syntax
-  r = re.compile(peg.gram,peg.defs)
-  res2 = r:match(peg.gram)
-
-  peg.print_r(res2)
-
---assert(equals(res1, res2))
---]]--
 
 
-
-  print("all tests succesful")
+print("all tests succesful")
