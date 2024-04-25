@@ -53,7 +53,6 @@ local function resetOptions()
   return opts
 end
 
-
 -- check values and fill default to the opts 
 local function mergeOptions(options)
 
@@ -81,9 +80,7 @@ local function mergeOptions(options)
 -- Lua 5.1 compatibility:
   local unpack = unpack or table.unpack
 
-
   local Predef = { nl = m.P"\n", cr = m.P"\r", tab = m.P"\t" }
-
 
   local function updatelocale()
     m.locale(Predef)
@@ -112,19 +109,13 @@ local function mergeOptions(options)
 
   updatelocale()
 
-
-
   local function defaultsync(patt)
     return (m.P(1)^-1) * (-patt * m.P(1))^0
   end
 
-
-
-
   local function sync (patt)
     return patt --(-patt * m.P(1))^0 * patt^0 -- skip until we find the pattern and consume it(if we do)
   end
-
 
   local function pattspaces (patt)
     if opts.skipspaces then
@@ -149,7 +140,6 @@ local function mergeOptions(options)
   end
 
   local bg = {} -- local variable to keep global function buildgrammar
-
 
   local function addspaces (caps)
     local hastoken = tokenstack:pop()
@@ -274,7 +264,6 @@ local function mergeOptions(options)
     end
   end
 
-
   local function applygrammar(gram, opts)
     if opts.trace then 
       return m.P(pegdebugtrace(gram, opts.traceoptions))
@@ -306,7 +295,6 @@ local function mergeOptions(options)
 
       ret1 = traverse(op1, tokenrule)
       ret2 = traverse(op2, tokenrule)
-
 
       return applyaction(act, ret1, ret2, tokenrule)
 
@@ -405,7 +393,6 @@ local function mergeOptions(options)
     end
   end
 
-
   function bg.buildgrammar (ast)
     local builder = {}
 
@@ -449,9 +436,6 @@ local function mergeOptions(options)
 
     return builder
   end
-
-
-
 
   local function build(ast, opts)
 
@@ -508,7 +492,7 @@ local function mergeOptions(options)
     if action == "or" then
       return '(' .. op1 ..' / '.. op2 ..')'
     elseif action == "and" then
-      return op1 ..' ' .. op2
+      return '('..op1..' '..op2..')'  --25/04/24 DCN: added brackets
     elseif action == "&" then
       return '&'..op1
     elseif action == "!" then
@@ -526,7 +510,7 @@ local function mergeOptions(options)
 --		if not lab then
 --			error("Label '"..op2.."' unspecified using setlabels()")
 -- end
-      return op1 .. '^'..op2 
+      return op1..'^'..op2
     elseif action == "->" then
       if op1 == "''" then -- spacial case for empty capture
         return  op1 ..' -> '.. op2  
@@ -726,7 +710,6 @@ local function mergeOptions(options)
     if opts.recovery and not  builder["SYNC"] then 
       builder["SYNC"] = opts.specialrules.SYNC_re
     end
-
 
   end  
 

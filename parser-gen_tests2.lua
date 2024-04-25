@@ -25,22 +25,31 @@ local function cleanGram(s) -- remove leading and ending spaces and tabs
   return (s:gsub("^%s*(.-)%s*$", "%1"):gsub("[\9 ]+", " "))
 end
 
-
-local function tst_ast(str, gram, options)
+local ast_test_number = 0
+local function tst_ast(str, gram, options, test_name)
 -- rule round trip
-  options = options or {}  
-
+  options = options or {}
+  ast_test_number = ast_test_number + 1
+  test_name = test_name or 'anon#'..ast_test_number
+  print('\nast_tst ('..test_name..') start...')
+  
   local ast = peg.pegToAST(gram, options['definitions'])
   local gram2 = pg.astToPEG(ast, {recovery=false, skipspaces=false, nocaptures=true, re_useext=true})
 
-  print(serpent.block(cleanGram(gram)))
-  print(serpent.block(cleanGram(gram2)))
+  print('Given grammar: '..serpent.block(cleanGram(gram)))
+  print('New grammar: '..serpent.block(cleanGram(gram2)))
+  print('Given str: '..serpent.block(str))
 
   if not options['not_exact_grammar'] then
 --    assert(cleanGram(gram) == cleanGram(gram2))
   end
   local c1,e1 = pg.parse(str, gram, options)
   local c2,e2 = pg.parse(str, gram2, options)
+
+  print('Given grammar captures: '..serpent.block(c1))
+  print('New grammar captures: '..serpent.block(c2))
+  print('Given grammar errors: '..serpent.block(e1))
+  print('New grammar errors: '..serpent.block(e2))
 
   assert(equals(c1, c2)) -- same captures
   assert(equals(e1, e2)) -- same error
@@ -55,6 +64,7 @@ local function tst_ast(str, gram, options)
     local m3, me3 = p3:match(str)
     assert( equals(m1, m3))
   end
+  print('ast_tst ('..test_name..') ...finish\n')
   return m1, me1
 end
 
@@ -93,7 +103,7 @@ SKIP <- DOT
 DOT <- '.'
 ]]
 str = "a...b"
---tst_ast(str, rule) 
+tst_ast(str, rule)   --was disabled
 
 -- non terminals
 -- space allowed
@@ -125,7 +135,7 @@ tst_ast(str, rule)
 
 rule = [[ R <- 'a' ( 'b' / 'c' )]]
 str = 'ab'
---res = tst_ast(str, rule, {not_exact_grammar = true})
+res = tst_ast(str, rule, {not_exact_grammar = true})  --was disabled
 -- testing ranges
 rule = [[ r <- {[a1b]* } ]]
 str = "a1b"
@@ -302,16 +312,31 @@ A	<- 'a'
 B	<- 'b'
 ]]
 
+
 -- SELF-DESCRIPTION  
 --local res1, errs = tst_ast(peg.gram, peg.gram, {nocaptures=true, labels=peg.errinfo, definitions = {foldtable = peg.foldtable, concat = peg.concat}, not_exact_grammar = true})
 
 local options ={nocaptures=true, labels=peg.errinfo, definitions = {foldtable = peg.foldtable, concat = peg.concat}} 
-  
-local str = peg.gram
+
 local ast = peg.pegToAST(peg.gram, {foldtable = peg.foldtable, concat = peg.concat})
+
+print( "=====================")
+print( "peg.gram:\n")
+print( peg.gram)
+print( "=====================")
+
+print( "=====================")
+print("ast:\n")
+print(serpent.block(ast))
+print( "=====================")
+
 local gram3 = pg.astToPEG(ast, {recovery=false, skipspaces=false, nocaptures=true, re_useext=true})
 
-print(gram3)
+print( "=====================")
+print( "gram3:\n")
+print( gram3)
+print( "=====================")
+
 
 local optionstrace = tableMerge({trace=true}, options)
 local c1,e1 = pg.parse(rule, peg.gram, options)
